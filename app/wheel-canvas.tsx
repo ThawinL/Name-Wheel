@@ -7,6 +7,14 @@ import { START_ANGLE, TAU, type WheelPhysics } from './physics';
 const INK = '#15243C';
 const segmenter = new Intl.Segmenter('th', { granularity: 'grapheme' });
 
+function rimColor(color: string) {
+  const channels = [1, 3, 5].map((offset) => {
+    const channel = parseInt(color.slice(offset, offset + 2), 16);
+    return Math.round(channel + (255 - channel) * 0.55);
+  });
+  return `rgb(${channels.join(', ')})`;
+}
+
 function fitLabel(context: CanvasRenderingContext2D, label: string, width: number) {
   if (context.measureText(label).width <= width) return label;
   if (context.measureText('…').width > width) return '';
@@ -133,13 +141,13 @@ export function WheelCanvas({ names, settings, physics, redraw, radiusRef }: {
 
       disk.beginPath();
       disk.arc(0, 0, radius, 0, TAU);
-      disk.fillStyle = names.length ? INK : '#E9EDF4';
+      disk.fillStyle = '#E9EDF4';
       disk.fill();
 
       if (names.length) {
         const sector = TAU / names.length;
         const pegRing = radius - 11;
-        const outer = radius - 5;
+        const outer = radius - Math.max(5, radius * 0.048);
         labelRadius = radius * 0.63;
         const pegSize = Math.min(settings.pegSize, 0.34 * sector * pegRing);
         disk.font = `700 ${settings.fontSize}px "DM Sans Variable", "Noto Sans Thai Variable", sans-serif`;
@@ -149,26 +157,22 @@ export function WheelCanvas({ names, settings, physics, redraw, radiusRef }: {
         const halfHeight = settings.fontSize * 0.7;
         const labelWidth = clearance > halfHeight ? 2 * Math.sqrt(clearance ** 2 - halfHeight ** 2) : 0;
 
-        names.forEach((name, index) => {
-          labels.push(fitLabel(disk, name, labelWidth));
-          const angle = index * sector;
+        const drawSector = (index: number, edge: number, color: string) => {
+          const angle = index * sector - sector / 2;
+          const overlap = Math.min(sector * 0.025, 0.6 / edge);
           disk.beginPath();
           if (names.length > 1) disk.moveTo(0, 0);
-          disk.arc(0, 0, outer, angle - sector / 2, angle + sector / 2);
+          disk.arc(0, 0, edge, angle, angle + sector + overlap);
           disk.closePath();
-          disk.fillStyle = settings.colors[index % settings.colors.length];
+          disk.fillStyle = color;
           disk.fill();
-
-          if (names.length > 1) {
-            const boundary = angle - sector / 2;
-            disk.beginPath();
-            disk.moveTo(0, 0);
-            disk.lineTo(outer * Math.cos(boundary), outer * Math.sin(boundary));
-            disk.strokeStyle = '#FFFFFF';
-            disk.lineWidth = Math.min(1.45, outer * sector * 0.25);
-            disk.stroke();
-          }
-
+        };
+        names.forEach((_, index) => {
+          drawSector(index, radius, rimColor(settings.colors[index % settings.colors.length]));
+        });
+        names.forEach((name, index) => {
+          labels.push(fitLabel(disk, name, labelWidth));
+          drawSector(index, outer, settings.colors[index % settings.colors.length]);
         });
 
         for (let index = 0; index < names.length; index++) {
