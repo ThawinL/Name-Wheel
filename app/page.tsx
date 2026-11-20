@@ -16,6 +16,7 @@ function restore(): Partial<Saved> {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE) ?? '{}');
     const settings = { ...defaults };
+    if (saved.settings?.labelOrientation === 'radial') settings.labelOrientation = 'radial';
     for (const { key, min, max } of [...appearance, ...motion, ...contact]) {
       const value = saved.settings?.[key];
       if (typeof value === 'number' && Number.isFinite(value)) settings[key] = Math.max(min, Math.min(max, value));

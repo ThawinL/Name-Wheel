@@ -95,6 +95,7 @@ kbd { font-family: inherit; font-size: 0.79rem; font-weight: 700; border: 1px so
 .sliders { display: grid; gap: 13px; margin-block: 17px; }
 .slider { display: grid; gap: 4px; }
 .slider span { display: flex; align-items: baseline; justify-content: space-between; gap: 5px; font-size: 0.91rem; font-weight: 630; }
+.slider select { width: 100%; padding: 7px 9px; border: 1px solid #cdd8e7; border-radius: 6px; background: #fff; color: inherit; font: inherit; }
 .slider output { font-size: 0.81rem; font-weight: 750; color: #2059cb; }
 .slider input { margin: 0; width: 100%; accent-color: var(--blue); }
 .colors { display: grid; gap: 8px; font-size: 0.91rem; font-weight: 630; padding-top: 12px; border-top: 1px solid var(--line); }

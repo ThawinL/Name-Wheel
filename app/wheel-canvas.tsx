@@ -60,6 +60,7 @@ export function WheelCanvas({ names, settings, physics, redraw, radiusRef }: {
     let labelRadius = 0;
     let scale = 1;
     let disposed = false;
+    const radialLabels = settings.labelOrientation === 'radial';
     const pointerScale = settings.pointerSize / 100;
 
     const paint = () => {
@@ -79,7 +80,17 @@ export function WheelCanvas({ names, settings, physics, redraw, radiusRef }: {
       labels.forEach((label, index) => {
         if (!label) return;
         const angle = rotation + index * TAU / labels.length;
-        context.fillText(label, center + labelRadius * Math.cos(angle), centerY + labelRadius * Math.sin(angle));
+        const x = center + labelRadius * Math.cos(angle);
+        const y = centerY + labelRadius * Math.sin(angle);
+        if (radialLabels) {
+          context.save();
+          context.translate(x, y);
+          context.rotate(angle);
+          context.fillText(label, 0, 0);
+          context.restore();
+        } else {
+          context.fillText(label, x, y);
+        }
       });
 
       const circle = (x: number, y: number, r: number, color: string) => {
@@ -151,11 +162,22 @@ export function WheelCanvas({ names, settings, physics, redraw, radiusRef }: {
         labelRadius = radius * 0.63;
         const pegSize = Math.min(settings.pegSize, 0.34 * sector * pegRing);
         disk.font = `700 ${settings.fontSize}px "DM Sans Variable", "Noto Sans Thai Variable", sans-serif`;
-        // Fit a horizontal label inside the sector through a full revolution.
-        const sectorClearance = labelRadius * Math.sin(Math.min(sector / 2, Math.PI / 2));
-        const clearance = Math.min(sectorClearance, outer - labelRadius) - 5;
+        const halfSector = Math.min(sector / 2, Math.PI / 2);
         const halfHeight = settings.fontSize * 0.7;
-        const labelWidth = clearance > halfHeight ? 2 * Math.sqrt(clearance ** 2 - halfHeight ** 2) : 0;
+        const padding = 5;
+        let labelWidth = 0;
+        if (radialLabels) {
+          // Fit the label rectangle between the sector edges and the outer rim.
+          const inner = Math.max(radius * 0.2, (halfHeight * Math.cos(halfSector) + padding) / Math.sin(halfSector));
+          const outerEdge = Math.sqrt(Math.max(0, (outer - padding) ** 2 - halfHeight ** 2));
+          labelRadius = (inner + outerEdge) / 2;
+          labelWidth = Math.max(0, outerEdge - inner);
+        } else {
+          // Fit a horizontal label inside the sector through a full revolution.
+          const sectorClearance = labelRadius * Math.sin(halfSector);
+          const clearance = Math.min(sectorClearance, outer - labelRadius) - padding;
+          labelWidth = clearance > halfHeight ? 2 * Math.sqrt(clearance ** 2 - halfHeight ** 2) : 0;
+        }
 
         const drawSector = (index: number, edge: number, color: string) => {
           const angle = index * sector - sector / 2;

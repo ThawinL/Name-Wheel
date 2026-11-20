@@ -2,9 +2,12 @@ export const palette = ['#F45B69', '#FF9F43', '#FFD93D', '#62C96B', '#35C9C1', '
 
 export const defaultNames = ['มะลิ', 'ภูผา', 'ใบเตย', 'ออมสิน', 'ต้นกล้า', 'น้ำใส', 'ตะวัน', 'ข้าวหอม'].join('\n');
 
+export type LabelOrientation = 'upright' | 'radial';
+
 export const defaults = {
   wheelSize: 92,
   fontSize: 19,
+  labelOrientation: 'upright' as LabelOrientation,
   pegSize: 4,
   pointerSize: 100,
   launch: 28,
@@ -23,7 +26,7 @@ export const defaults = {
 export type Settings = typeof defaults;
 export type Phase = 'idle' | 'charging' | 'coasting';
 
-type Slider = { key: Exclude<keyof Settings, 'colors' | 'pointerColor'>; label: string; min: number; max: number; step: number; unit?: string };
+type Slider = { key: Exclude<keyof Settings, 'colors' | 'pointerColor' | 'labelOrientation'>; label: string; min: number; max: number; step: number; unit?: string };
 export const appearance: Slider[] = [
   { key: 'wheelSize', label: 'ขนาดวงล้อ', min: 60, max: 100, step: 1, unit: '%' },
   { key: 'fontSize', label: 'ขนาดตัวอักษร', min: 12, max: 30, step: 1, unit: ' px' },

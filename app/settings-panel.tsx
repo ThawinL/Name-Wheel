@@ -27,6 +27,16 @@ export function SettingsPanel({ values, onChange, onClose, locked }: {
           <button aria-pressed={tab === 'contact'} onClick={() => setTab('contact')}>เข็มและเสียง</button>
         </div>
         <div className="sliders">
+          {tab === 'appearance' && <label className="slider">
+            <span>ทิศทางตัวอักษร</span>
+            <select value={values.labelOrientation} onChange={(event) => onChange({
+              ...values,
+              labelOrientation: event.target.value === 'radial' ? 'radial' : 'upright',
+            })}>
+              <option value="upright">อ่านจากด้านบนเสมอ</option>
+              <option value="radial">หมุนตามวงล้อ</option>
+            </select>
+          </label>}
           {sliders.map(({ key, label, min, max, step, unit }) =>
             <label className="slider" key={key}>
               <span>{label}<output>{values[key]}{unit}</output></span>
