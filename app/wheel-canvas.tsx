@@ -48,6 +48,8 @@ export function WheelCanvas({ names, settings, physics, redraw, radiusRef }: {
     let center = 0;
     let centerY = 0;
     let radius = 0;
+    let labels: string[] = [];
+    let labelRadius = 0;
     let scale = 1;
     let disposed = false;
     const pointerScale = settings.pointerSize / 100;
@@ -57,9 +59,20 @@ export function WheelCanvas({ names, settings, physics, redraw, radiusRef }: {
       context.clearRect(0, 0, canvas.width / scale, canvas.height / scale);
       context.save();
       context.translate(center, centerY);
-      context.rotate(physics.current?.angle ?? START_ANGLE);
+      const rotation = physics.current?.angle ?? START_ANGLE;
+      context.rotate(rotation);
       context.drawImage(face, -size / 2, -size / 2, size, size);
       context.restore();
+
+      context.font = `700 ${settings.fontSize}px "DM Sans Variable", "Noto Sans Thai Variable", sans-serif`;
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillStyle = INK;
+      labels.forEach((label, index) => {
+        if (!label) return;
+        const angle = rotation + index * TAU / labels.length;
+        context.fillText(label, center + labelRadius * Math.cos(angle), centerY + labelRadius * Math.sin(angle));
+      });
 
       const circle = (x: number, y: number, r: number, color: string) => {
         context.beginPath();
@@ -108,6 +121,7 @@ export function WheelCanvas({ names, settings, physics, redraw, radiusRef }: {
       centerY = height / 2;
       radius = size / 2 - 2;
       radiusRef.current = radius;
+      labels = [];
 
       canvas.width = Math.round(width * scale);
       canvas.height = Math.round(height * scale);
@@ -126,13 +140,17 @@ export function WheelCanvas({ names, settings, physics, redraw, radiusRef }: {
         const sector = TAU / names.length;
         const pegRing = radius - 11;
         const outer = radius - 5;
-        const labelStart = radius * 0.22;
-        const labelEnd = radius * 0.832;
+        labelRadius = radius * 0.63;
         const pegSize = Math.min(settings.pegSize, 0.34 * sector * pegRing);
         disk.font = `700 ${settings.fontSize}px "DM Sans Variable", "Noto Sans Thai Variable", sans-serif`;
-        disk.textBaseline = 'middle';
+        // Fit a horizontal label inside the sector through a full revolution.
+        const sectorClearance = labelRadius * Math.sin(Math.min(sector / 2, Math.PI / 2));
+        const clearance = Math.min(sectorClearance, outer - labelRadius) - 5;
+        const halfHeight = settings.fontSize * 0.7;
+        const labelWidth = clearance > halfHeight ? 2 * Math.sqrt(clearance ** 2 - halfHeight ** 2) : 0;
 
         names.forEach((name, index) => {
+          labels.push(fitLabel(disk, name, labelWidth));
           const angle = index * sector;
           disk.beginPath();
           if (names.length > 1) disk.moveTo(0, 0);
@@ -151,18 +169,6 @@ export function WheelCanvas({ names, settings, physics, redraw, radiusRef }: {
             disk.stroke();
           }
 
-          const innerClearance = Math.max(labelStart, settings.fontSize * 0.66 / Math.max(0.001, Math.sin(Math.min(sector / 2, Math.PI / 2))));
-          const label = fitLabel(disk, name, labelEnd - innerClearance);
-          if (!label) return;
-          const reverse = Math.cos(angle + START_ANGLE) < -0.14;
-          disk.save();
-          disk.rotate(angle);
-          disk.translate(labelEnd, 0);
-          if (reverse) disk.rotate(Math.PI);
-          disk.fillStyle = INK;
-          disk.textAlign = reverse ? 'left' : 'right';
-          disk.fillText(label, 0, 0);
-          disk.restore();
         });
 
         for (let index = 0; index < names.length; index++) {
