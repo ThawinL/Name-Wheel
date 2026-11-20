@@ -26,7 +26,9 @@ export class WheelPhysics {
   private flexSpeed = 0;
   private seconds = 0;
   private quietTime = 0;
+  private launchDirection = 1;
   private motionSign = 1;
+  private pegResistance = 1;
   private hitAt = -Infinity;
   private lastPeg = -Infinity;
 
@@ -41,15 +43,20 @@ export class WheelPhysics {
   start(hold: boolean, settings: Settings) {
     this.phase = hold ? 'charging' : 'coasting';
     this.quietTime = 0;
-    this.motionSign = 1;
+    this.launchDirection = randomUnit() < 0.5 ? -1 : 1;
+    this.motionSign = this.launchDirection;
+    this.pegResistance = 0.85 + randomUnit() * 0.45;
     this.lastPeg = -Infinity;
     this.hitAt = -Infinity;
-    this.setVelocity(hold ? 0.9 : settings.launch * (0.7 + randomUnit() * 0.65));
+    const launchSpeed = hold ? 0.9 : settings.launch * (0.8 + randomUnit() * 0.32);
+    this.setVelocity(this.launchDirection * launchSpeed);
   }
 
   release(settings: Settings) {
     this.phase = 'coasting';
-    this.setVelocity(Math.max(7, Math.abs(this.velocity)) + (1.4 + randomUnit() * 5.5) * settings.launch / 28);
+    const releaseSpeed = Math.max(7, this.velocity * this.launchDirection);
+    const releaseBoost = (1.4 + randomUnit() * 5.5) * settings.launch / 28;
+    this.setVelocity(this.launchDirection * (releaseSpeed + releaseBoost));
   }
 
   private setVelocity(speed: number) {
@@ -67,25 +74,32 @@ export class WheelPhysics {
     const clearance = Math.min(spacing * 0.29, (settings.pegSize + 5 * settings.pointerSize / 100) / Math.max(radius - 11, 1));
     const inside = Math.abs(pegDistance) < clearance;
     const cam = inside ? Math.cos(pegDistance / clearance * Math.PI / 2) ** 2 : 0;
-    const camEnergy = Math.min(0.092 * settings.impact * (settings.stiffness / 14), 180 * clearance ** 2);
+    const pegSpacingFactor = Math.min(1, spacing / (TAU / 8));
+    const camEnergy = Math.min(
+      0.18 * this.pegResistance * settings.impact * (settings.stiffness / 14) * pegSpacingFactor ** 1.25,
+      180 * clearance ** 2,
+    );
     // At high speed the elastic part of a full crossing cancels out. Sampling
     // it once on a narrow peg would alias into a spurious accelerating torque.
     const resolvesCam = Math.abs(speed) * STEP < clearance / 2;
     let camTorque = inside && resolvesCam
       ? Math.sin(pegDistance / clearance * Math.PI) * Math.PI / (2 * clearance) * camEnergy
       : 0;
-    if (inside && Math.abs(speed) < 0.16) {
+    if (inside && Math.abs(speed) < 0.16 * Math.sqrt(pegSpacingFactor)) {
       const side = Math.sign(pegDistance) || this.motionSign;
       camTorque = side * Math.max(Math.abs(camTorque), settings.friction + 1.1);
     }
 
     const motor = this.phase === 'charging'
-      ? settings.acceleration * (1 - Math.max(0, speed) / settings.maxSpeed) + 2
+      ? this.launchDirection * (settings.acceleration * (1 - Math.max(0, speed * this.launchDirection) / settings.maxSpeed) + 2)
       : 0;
     const bearing = Math.sign(speed) * Math.min(Math.abs(speed) / STEP, settings.friction);
     const air = (settings.drag + 0.007 * Math.abs(speed)) * speed;
     const contactPressure = resolvesCam ? cam : clearance / spacing;
-    const contactLoss = 7 * settings.impact * contactPressure * speed * Math.min(1, spacing / 0.79);
+    // The pointer absorbs more of the remaining speed as a peg creeps past it.
+    const slowContact = Math.max(0, 1 - Math.abs(speed) / 3);
+    const contactLoss = (7 + 15 * slowContact) * this.pegResistance * settings.impact
+      * contactPressure * speed * pegSpacingFactor;
     const acceleration = motor + camTorque - bearing - air - contactLoss;
     this.disk.torque = this.disk.inertia * acceleration / 1e6;
     Engine.update(this.engine, STEP * 1000);

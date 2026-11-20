@@ -4,6 +4,9 @@ export const defaultNames = ['มะลิ', 'ภูผา', 'ใบเตย', 
 
 export type LabelOrientation = 'upright' | 'radial';
 
+const minimumFriction = 0.45;
+const minimumDrag = 0.1;
+
 export const defaults = {
   wheelSize: 92,
   fontSize: 19,
@@ -13,8 +16,8 @@ export const defaults = {
   launch: 28,
   acceleration: 16,
   maxSpeed: 36,
-  friction: 1.35,
-  drag: 0.38,
+  friction: minimumFriction,
+  drag: minimumDrag,
   impact: 1,
   stiffness: 14,
   damping: 13,
@@ -37,8 +40,8 @@ export const motion: Slider[] = [
   { key: 'launch', label: 'ความเร็วเริ่มต้น', min: 10, max: 48, step: 1, unit: ' rad/s' },
   { key: 'acceleration', label: 'แรงเร่งเมื่อกดค้าง', min: 4, max: 34, step: 1, unit: ' rad/s²' },
   { key: 'maxSpeed', label: 'ความเร็วสูงสุดเมื่อกดค้าง', min: 15, max: 56, step: 1, unit: ' rad/s' },
-  { key: 'friction', label: 'แรงเสียดทานแกน', min: 0.45, max: 4, step: 0.05, unit: ' rad/s²' },
-  { key: 'drag', label: 'แรงหน่วงตามความเร็ว', min: 0.1, max: 0.85, step: 0.01, unit: ' s⁻¹' },
+  { key: 'friction', label: 'แรงเสียดทานแกน', min: minimumFriction, max: 4, step: 0.05, unit: ' rad/s²' },
+  { key: 'drag', label: 'แรงหน่วงตามความเร็ว', min: minimumDrag, max: 0.85, step: 0.01, unit: ' s⁻¹' },
 ];
 export const contact: Slider[] = [
   { key: 'impact', label: 'แรงกระทบหมุด', min: 0.25, max: 2, step: 0.05, unit: '×' },
