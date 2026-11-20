@@ -9,6 +9,7 @@ import { SettingsPanel } from './settings-panel';
 import { WheelCanvas } from './wheel-canvas';
 
 const STORAGE = 'lucky-wheel-v1';
+const formatChance = new Intl.NumberFormat('th-TH', { style: 'percent', maximumFractionDigits: 2 });
 type Mode = 'auto' | 'hold';
 type Saved = { text: string; settings: Settings; mode: Mode; muted: boolean };
 
@@ -47,13 +48,14 @@ export default function Home() {
   const audio = useRef<PegAudio | null>(null);
   const redraw = useRef<() => void>(() => {});
   const radius = useRef(250);
-  const dots = useRef<HTMLDivElement>(null);
+  const lineDetails = useRef<HTMLDivElement>(null);
   const editButton = useRef<HTMLButtonElement>(null);
   const power = useRef<HTMLDivElement>(null);
   const mutedRef = useRef(muted);
   const button = useRef<HTMLButtonElement>(null);
   const inputs = useMemo(() => raw.split(/\r\n?|\n/), [raw]);
   const names = useMemo(() => inputs.map((entry) => entry.trim()).filter(Boolean), [inputs]);
+  const chance = names.length > 10_000 ? '<0.01%' : names.length ? formatChance.format(1 / names.length) : '';
   const liveNames = useRef(names);
   const liveSettings = useRef(settings);
   const liveIndex = useRef(2);
@@ -227,13 +229,27 @@ export default function Home() {
                 <span className="count">{names.length} ชื่อ</span>
               </div>
               <p className="card-description" id="name-hint">พิมพ์หรือวางชื่อ บรรทัดละหนึ่งชื่อ</p>
+              <span id="name-chance" hidden>{chance && `โอกาสต่อบรรทัด ${chance}`}</span>
               <div className="editor">
-                <div className="dot-rail" ref={dots} aria-hidden="true">
-                  {inputs.map((entry, index) => <div key={index}>{entry.trim() && <i style={{ background: settings.colors[colorIndex++ % settings.colors.length] }}/>}</div>)}
+                <div className="editor-details" aria-hidden="true">
+                  <div className="editor-detail-lines" ref={lineDetails}>
+                    {inputs.map((entry, index) => (
+                      <div className="editor-detail-line" key={index}>
+                        {entry.trim() && <>
+                          <i style={{ background: settings.colors[colorIndex++ % settings.colors.length] }}/>
+                          <span>{chance}</span>
+                        </>}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <textarea id="names" aria-describedby="name-hint" wrap="off" spellCheck={false} readOnly={locked} value={raw}
+                <textarea id="names" aria-describedby="name-hint name-chance" wrap="off" spellCheck={false} readOnly={locked} value={raw}
                   placeholder="ใส่รายชื่อที่นี่" onChange={(event) => setRaw(event.target.value)}
-                  onScroll={(event) => { if (dots.current) dots.current.scrollTop = event.currentTarget.scrollTop; }}/>
+                  onScroll={(event) => {
+                    if (lineDetails.current) {
+                      lineDetails.current.style.transform = `translateY(${-event.currentTarget.scrollTop}px)`;
+                    }
+                  }}/>
               </div>
             </section>
 

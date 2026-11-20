@@ -28,7 +28,7 @@ export class PegAudio {
     const filter = context.createBiquadFilter();
     filter.type = 'bandpass';
     filter.frequency.value = 850 + strength * 650;
-    filter.detune.value = (Math.random() * 2 - 1) * 35;
+    filter.detune.value = (Math.random() * 2 - 1) * 100;
     filter.Q.value = 1.2;
     const level = context.createGain();
     level.gain.setValueAtTime(volume * (0.22 + strength * 0.29), time);
