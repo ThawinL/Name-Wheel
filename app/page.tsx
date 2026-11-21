@@ -4,7 +4,7 @@ import { CircleHelp, Keyboard, List, Mouse, Pointer, RotateCcw, RotateCw, Shuffl
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PegAudio } from './audio';
 import { appearance, contact, defaultNames, defaults, motion, type Phase, type Settings } from './config';
-import { focusedIndex, START_ANGLE, STEP, TAU, wheelSectors, WheelPhysics, type SpinDirection } from './physics';
+import { focusedIndex, STEP, TAU, wheelSectors, WheelPhysics, type SpinDirection } from './physics';
 import { SettingsPanel } from './settings-panel';
 import { WheelCanvas } from './wheel-canvas';
 
@@ -128,12 +128,16 @@ export default function Home() {
   useEffect(() => {
     liveNames.current = names;
     liveSectors.current = sectors;
-    liveIndex.current = focusedIndex(physics.current?.angle ?? START_ANGLE, sectors);
-    setCurrent(liveIndex.current);
     setWinner(null);
   }, [names, sectors]);
 
   useEffect(() => { liveSettings.current = settings; }, [settings]);
+
+  const onPointedIndex = useCallback((index: number) => {
+    if (index === liveIndex.current) return;
+    liveIndex.current = index;
+    setCurrent(index);
+  }, []);
 
   const animate = useCallback(function tick(now: number) {
     const wheel = physics.current;
@@ -149,14 +153,9 @@ export default function Home() {
       accumulator.current -= STEP;
     }
     redraw.current();
-    const index = focusedIndex(wheel.angle, liveSectors.current);
-    if (index !== liveIndex.current) {
-      liveIndex.current = index;
-      setCurrent(index);
-    }
     power.current?.style.setProperty('--power', String(Math.min(1, Math.abs(wheel.velocity) / config.maxSpeed)));
     if (wheel.phase === 'idle') {
-      setWinner(entries[index] ?? null);
+      setWinner(entries[liveIndex.current] ?? null);
       setPhase('idle');
     } else {
       frame.current = requestAnimationFrame(tick);
@@ -291,7 +290,7 @@ export default function Home() {
         <div className="workspace">
           <section className="stage" aria-label="วงล้อและผลการสุ่ม">
             <div className="wheel-space">
-              <WheelCanvas names={names} sectors={sectors} settings={settings} physics={physics} redraw={redraw} radiusRef={radius} directionButton={directionButton}/>
+              <WheelCanvas names={names} sectors={sectors} settings={settings} physics={physics} redraw={redraw} radiusRef={radius} directionButton={directionButton} onPointedIndex={onPointedIndex}/>
               <button ref={directionButton} type="button" className="direction-button" disabled={locked}
                 aria-label="หมุนทวนเข็มนาฬิกา" aria-pressed={direction === -1}
                 title={direction === 1 ? 'หมุนตามเข็มนาฬิกา · กดเพื่อสลับทิศ' : 'หมุนทวนเข็มนาฬิกา · กดเพื่อสลับทิศ'}

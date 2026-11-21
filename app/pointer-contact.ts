@@ -16,6 +16,10 @@ export function pointerTriangle(scale: number, pegSize: number) {
   ];
 }
 
+export function pointerTipAzimuth(pivot: number, tip: Point, angle: number) {
+  return Math.atan2(tip.x * Math.sin(angle), pivot + tip.x * Math.cos(angle));
+}
+
 export function wheelPegs(sectors: { start: number; end: number }[], radius: number, pegSize: number): Peg[] {
   const ring = Math.max(1, radius - PEG_INSET);
   return sectors.map(({ start, end }, index) => {
@@ -78,4 +82,27 @@ export function pointerContact(rotation: number, pivot: number, pegs: Peg[], tri
     else clear = middle;
   }
   return { angle: direction * clear, touching: neutralBlocked };
+}
+
+
+// Keep the tip on the requested dial coordinate even when a narrow sector
+// only has room for the blade at an angle.
+export function pointerLanding(dialPosition: number, pivot: number, pegs: Peg[], triangle: Point[], swing: number) {
+  const poseAt = (angle: number) => ({
+    angle: pointerTipAzimuth(pivot, triangle[1], angle) - dialPosition,
+    blade: angle,
+  });
+  const fits = (pose: ReturnType<typeof poseAt>) =>
+    pointerContact(pose.angle, pivot, pegs, triangle, pose.blade, swing).angle === pose.blade;
+  const neutral = poseAt(0);
+  if (fits(neutral)) return neutral;
+
+  let blocked = 0;
+  let clear = MAX_SWING;
+  for (let i = 0; i < 16; i++) {
+    const middle = (blocked + clear) / 2;
+    if (fits(poseAt(swing * middle))) clear = middle;
+    else blocked = middle;
+  }
+  return poseAt(swing * clear);
 }

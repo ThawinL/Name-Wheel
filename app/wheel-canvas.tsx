@@ -2,10 +2,10 @@
 
 import { useLayoutEffect, useRef } from 'react';
 import type { Settings } from './config';
-import { START_ANGLE, TAU, type Sector, type WheelPhysics } from './physics';
+import { focusedIndex, START_ANGLE, TAU, type Sector, type WheelPhysics } from './physics';
 import {
   PEG_STROKE, PEG_STROKE_THRESHOLD, POINTER_OFFSET, POINTER_STROKE,
-  pointerContact, pointerTriangle, wheelPegs, type Peg,
+  pointerContact, pointerTipAzimuth, pointerTriangle, wheelPegs, type Peg,
 } from './pointer-contact';
 
 const INK = '#15243C';
@@ -40,7 +40,7 @@ function fitLabel(context: CanvasRenderingContext2D, label: string, width: numbe
   return groups.slice(0, first).join('').trimEnd() + '…';
 }
 
-export function WheelCanvas({ names, sectors, settings, physics, redraw, radiusRef, directionButton }: {
+export function WheelCanvas({ names, sectors, settings, physics, redraw, radiusRef, directionButton, onPointedIndex }: {
   names: string[];
   sectors: Sector[];
   settings: Settings;
@@ -48,6 +48,7 @@ export function WheelCanvas({ names, sectors, settings, physics, redraw, radiusR
   redraw: React.RefObject<() => void>;
   radiusRef: React.RefObject<number>;
   directionButton: React.RefObject<HTMLButtonElement | null>;
+  onPointedIndex: (index: number) => void;
 }) {
   const element = useRef<HTMLCanvasElement>(null);
   const layer = useRef<HTMLCanvasElement | null>(null);
@@ -118,6 +119,7 @@ export function WheelCanvas({ names, sectors, settings, physics, redraw, radiusR
       const swing = physics.current?.pointerContactSwing || contactSwing || -Math.sign(physics.current?.velocity ?? 0) || Math.sign(springAngle) || 1;
       const contact = pointerContact(rotation, pivot, pegs, triangle, springAngle, swing);
       contactSwing = contact.touching ? swing : 0;
+      onPointedIndex(focusedIndex(rotation - pointerTipAzimuth(pivot, triangle[1], contact.angle), sectors));
       context.translate(center + pivot, centerY);
       context.save();
       context.rotate(contact.angle);
@@ -236,7 +238,7 @@ export function WheelCanvas({ names, sectors, settings, physics, redraw, radiusR
       window.removeEventListener('resize', build);
       if (redraw.current === paint) redraw.current = () => {};
     };
-  }, [names, sectors, settings, physics, redraw, radiusRef, directionButton]);
+  }, [names, sectors, settings, physics, redraw, radiusRef, directionButton, onPointedIndex]);
 
   return <canvas ref={element} className="wheel-canvas" role="img" aria-label={`วงล้อสุ่มชื่อ ${names.length} ช่อง เข็มชี้อยู่ด้านขวา`}/>;
 }

@@ -1,6 +1,6 @@
 import Matter from 'matter-js';
 import type { Phase, Settings } from './config';
-import { PEG_INSET, POINTER_OFFSET, pointerContact, pointerTriangle, wheelPegs } from './pointer-contact';
+import { PEG_INSET, POINTER_OFFSET, pointerContact, pointerLanding, pointerTipAzimuth, pointerTriangle, wheelPegs } from './pointer-contact';
 
 const { Bodies, Body, Composite, Engine } = Matter;
 
@@ -63,7 +63,6 @@ export class WheelPhysics {
   private launchDirection = 1;
   private motionSign = 1;
   pointerContactSwing = 0;
-  private recoilSide = 0;
   private geometry: {
     sectors: Sector[];
     radius: number;
@@ -74,7 +73,7 @@ export class WheelPhysics {
   private hitAt = -Infinity;
   private lastPeg = -Infinity;
   private target: number | null = null;
-  private landing: { from: number; distance: number; duration: number; slope: number; elapsed: number } | null = null;
+  private landing: { from: number; distance: number; duration: number; slope: number; elapsed: number; blade: number; swing: number } | null = null;
 
   constructor() {
     Body.setAngle(this.disk, START_ANGLE);
@@ -92,7 +91,6 @@ export class WheelPhysics {
     this.motionSign = this.launchDirection;
     this.lastPeg = -Infinity;
     this.pointerContactSwing = 0;
-    this.recoilSide = 0;
     this.hitAt = -Infinity;
     this.target = target;
     this.landing = null;
@@ -118,6 +116,7 @@ export class WheelPhysics {
         pegs: wheelPegs(sectors, radius, settings.pegSize),
       };
     }
+    const pivot = radius + POINTER_OFFSET;
     const tightness = settings.pivotTightness / 100;
     const angle = this.angle;
     const speed = this.velocity;
@@ -139,20 +138,10 @@ export class WheelPhysics {
     // At high speed the elastic part of a full crossing cancels out. Sampling
     // it once on a narrow peg would alias into a spurious accelerating torque.
     const resolvesCam = Math.abs(speed) * STEP < clearance / 2;
-    let camTorque = inside && resolvesCam
+    const camTorque = inside && resolvesCam
       ? Math.sin(pegDistance / clearance * Math.PI) * Math.PI / (2 * clearance) * camEnergy
       : 0;
-    // Once the wheel stalls on a loaded peg, let the spring overcome
-    // bearing friction until that peg leaves the contact zone.
-    if (!inside || this.phase !== 'coasting' || this.landing) {
-      this.recoilSide = 0;
-    } else if (!this.recoilSide && Math.abs(speed) < 0.035) {
-      this.recoilSide = Math.sign(pegDistance) || this.motionSign;
-    }
-    if (this.recoilSide) {
-      const returnTorque = settings.friction + 0.12 + (0.12 + tightness * 0.2) * cam;
-      camTorque = this.recoilSide * Math.max(camTorque * this.recoilSide, returnTorque);
-    }
+
 
     const motor = this.phase === 'charging'
       ? this.launchDirection * (settings.acceleration * (1 - Math.max(0, speed * this.launchDirection) / settings.maxSpeed) + 2)
@@ -166,16 +155,31 @@ export class WheelPhysics {
     // Pick the weighted outcome before spinning. Guide the final coast to its sector
     // so the peg forces and spin settings cannot change the selected probabilities.
     const forwardSpeed = speed * this.launchDirection;
-    if (this.target !== null && this.phase === 'coasting' && !this.landing && forwardSpeed > 0 && forwardSpeed < 2) {
-      const distance = WRAP((this.target - angle) * this.launchDirection);
-      const duration = Math.max(STEP, Math.min(7, 2.5 * distance / forwardSpeed));
-      const slope = Math.min(3, forwardSpeed * duration / Math.max(distance, 1e-9));
-      this.landing = { from: angle, distance: distance * this.launchDirection, duration, slope, elapsed: 0 };
+    if (this.phase === 'coasting' && !this.landing) {
+      if (this.target !== null && forwardSpeed > 0 && forwardSpeed < 2) {
+        const swing = -this.launchDirection;
+        const pose = pointerLanding(-this.target, pivot, this.geometry.pegs, this.geometry.triangle, swing);
+        const distance = WRAP((pose.angle - angle) * this.launchDirection);
+        const duration = Math.max(STEP, Math.min(7, 2.5 * distance / forwardSpeed));
+        const slope = Math.min(3, forwardSpeed * duration / Math.max(distance, 1e-9));
+        this.landing = { from: angle, distance: distance * this.launchDirection, duration, slope, elapsed: 0, blade: pose.blade, swing };
+      } else if (this.target === null && inside && Math.abs(speed) < 0.035) {
+        // A stalled peg releases into the sector on the blade's side of it.
+        const tipAzimuth = pointerTipAzimuth(pivot, this.geometry.triangle[1], this.pointerAngle);
+        const pointed = sectors[focusedIndex(angle - tipAzimuth, sectors)];
+        const swing = this.pointerContactSwing || Math.sign(this.pointerAngle) || -this.motionSign;
+        const pose = pointerLanding(pointed.center, pivot, this.geometry.pegs, this.geometry.triangle, swing);
+        const distance = WRAP(pose.angle - angle + Math.PI) - Math.PI;
+        const duration = Math.max(0.32, Math.min(1.05, 2 * Math.sqrt(Math.abs(distance))));
+        this.landing = { from: angle, distance, duration, slope: 0, elapsed: 0, blade: pose.blade, swing };
+      }
     }
     const landing = this.landing;
+    let landingProgress = 0;
     if (landing) {
       landing.elapsed += STEP;
       const t = Math.min(1, landing.elapsed / landing.duration);
+      landingProgress = t;
       const progress = t * (t * (3 - 2 * t) + landing.slope * (1 - t) ** 2);
       const next = landing.from + landing.distance * progress;
       Body.setAngle(this.disk, next);
@@ -212,9 +216,11 @@ export class WheelPhysics {
     const springRate = 16 + tightness * 18;
     const damping = 9 + tightness * 22;
     this.pointerSpeed -= (this.pointerAngle * springRate ** 2 + damping * this.pointerSpeed) * STEP;
-    const freeAngle = this.pointerAngle + this.pointerSpeed * STEP;
-    const swing = this.pointerContactSwing || -this.motionSign;
-    const contact = pointerContact(this.angle, radius + POINTER_OFFSET, this.geometry.pegs, this.geometry.triangle, freeAngle, swing);
+    const springAngle = this.pointerAngle + this.pointerSpeed * STEP;
+    const guide = Math.max(0, (landingProgress - 0.7) / 0.3) ** 2;
+    const freeAngle = landing ? springAngle + (landing.blade - springAngle) * guide : springAngle;
+    const swing = landing && guide > 0 ? landing.swing : this.pointerContactSwing || -this.motionSign;
+    const contact = pointerContact(this.angle, pivot, this.geometry.pegs, this.geometry.triangle, freeAngle, swing);
     this.pointerContactSwing = contact.touching ? swing : 0;
     if (contact.angle !== freeAngle) {
       const push = Math.sign(contact.angle - freeAngle);
@@ -223,6 +229,7 @@ export class WheelPhysics {
       this.pointerSpeed = push * Math.min(9 - tightness * 4, Math.max(0, change ? pushedSpeed : 0));
     }
     this.pointerAngle = contact.angle;
+    if (landingProgress === 1) this.pointerSpeed = 0;
 
     if (this.phase === 'coasting' && (landing ? landing.elapsed >= landing.duration : !inside && Math.abs(this.velocity) < 0.009)) {
       this.setVelocity(0);
@@ -230,7 +237,7 @@ export class WheelPhysics {
       this.pointerQuietTime = Math.abs(this.pointerSpeed) < 0.14 ? this.pointerQuietTime + STEP : 0;
       if (this.quietTime > 0.24 && this.pointerQuietTime > 0.08) {
         this.phase = 'idle';
-        if (Math.abs(this.pointerAngle) < 0.012) this.pointerAngle = 0;
+        if (!landing && Math.abs(this.pointerAngle) < 0.012) this.pointerAngle = 0;
         this.pointerSpeed = 0;
         Body.setAngle(this.disk, WRAP(this.angle));
         this.setVelocity(0);
