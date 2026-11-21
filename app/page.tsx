@@ -4,7 +4,7 @@ import { CircleHelp, Keyboard, List, Mouse, Pointer, RotateCcw, RotateCw, Shuffl
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PegAudio } from './audio';
 import { appearance, contact, defaultNames, defaults, motion, type Phase, type Settings } from './config';
-import { focusedIndex, randomUnit, START_ANGLE, STEP, TAU, wheelSectors, WheelPhysics, type SpinDirection } from './physics';
+import { focusedIndex, START_ANGLE, STEP, TAU, wheelSectors, WheelPhysics, type SpinDirection } from './physics';
 import { SettingsPanel } from './settings-panel';
 import { WheelCanvas } from './wheel-canvas';
 
@@ -17,6 +17,10 @@ const spreads = [
   { label: 'มาก', ratio: 12 },
 ];
 const revealDuration = 1050;
+function randomUnit() {
+  return crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
+}
+
 type Saved = { text: string; settings: Settings; mode: Mode; direction: SpinDirection; muted: boolean; weights: number[] | null; spread: number };
 const nameLines = (text: string) => text.split(/\r\n?|\n/);
 const activeNames = (lines: string[]) => lines.map((entry) => entry.trim()).filter(Boolean);
@@ -155,7 +159,7 @@ export default function Home() {
     if (!mutedRef.current) audio.current?.unlock();
     let target = null;
     const sectors = liveSectors.current;
-    if (sectors.length > 1) {
+    if (weights && sectors.length > 1) {
       const sector = sectors[focusedIndex(randomUnit() * TAU, sectors)];
       target = -(sector.center + (randomUnit() - 0.5) * (sector.end - sector.start) * 0.4);
     }
@@ -166,13 +170,13 @@ export default function Home() {
     accumulator.current = 0;
     frame.current = requestAnimationFrame(animate);
     return true;
-  }, [animate, direction]);
+  }, [animate, direction, weights]);
 
   const release = useCallback(() => {
     holdSource.current = null;
     const wheel = physics.current;
     if (wheel?.phase !== 'charging') return;
-    wheel.release(liveSettings.current);
+    wheel.release();
     setPhase('coasting');
   }, []);
 

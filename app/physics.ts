@@ -50,10 +50,6 @@ function pegPosition(angle: number, sectors: Sector[]) {
   return { position, index, turn, start, end };
 }
 
-export function randomUnit() {
-  return crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
-}
-
 export class WheelPhysics {
   engine = Engine.create({ gravity: { x: 0, y: 0, scale: 0 } });
   disk = Bodies.circle(0, 0, 40, { frictionAir: 0 });
@@ -64,7 +60,6 @@ export class WheelPhysics {
   private quietTime = 0;
   private launchDirection = 1;
   private motionSign = 1;
-  private pegResistance = 1;
   private hitAt = -Infinity;
   private lastPeg = -Infinity;
   private target: number | null = null;
@@ -83,20 +78,18 @@ export class WheelPhysics {
     this.quietTime = 0;
     this.launchDirection = direction;
     this.motionSign = this.launchDirection;
-    this.pegResistance = 0.85 + randomUnit() * 0.45;
     this.lastPeg = -Infinity;
     this.hitAt = -Infinity;
     this.target = target;
     this.landing = null;
-    const launchSpeed = hold ? 0.9 : settings.launch * (0.8 + randomUnit() * 0.32);
+    const launchSpeed = hold ? 0.9 : settings.launch;
     this.setVelocity(this.launchDirection * launchSpeed);
   }
 
-  release(settings: Settings) {
+  release() {
     this.phase = 'coasting';
     const releaseSpeed = Math.max(7, this.velocity * this.launchDirection);
-    const releaseBoost = (1.4 + randomUnit() * 5.5) * settings.launch / 28;
-    this.setVelocity(this.launchDirection * (releaseSpeed + releaseBoost));
+    this.setVelocity(this.launchDirection * releaseSpeed);
   }
 
   private setVelocity(speed: number) {
@@ -118,7 +111,7 @@ export class WheelPhysics {
     const cam = inside ? Math.cos(pegDistance / clearance * Math.PI / 2) ** 2 : 0;
     const pegSpacingFactor = Math.min(1, spacing / (TAU / 8));
     const camEnergy = Math.min(
-      0.18 * this.pegResistance * settings.impact * (settings.stiffness / 14) * pegSpacingFactor ** 1.25,
+      0.144 * settings.impact * (settings.stiffness / 14) * pegSpacingFactor ** 1.25,
       180 * clearance ** 2,
     );
     // At high speed the elastic part of a full crossing cancels out. Sampling
@@ -138,10 +131,8 @@ export class WheelPhysics {
     const bearing = Math.sign(speed) * Math.min(Math.abs(speed) / STEP, settings.friction);
     const air = (settings.drag + 0.007 * Math.abs(speed)) * speed;
     const contactPressure = resolvesCam ? cam : clearance / spacing;
-    // The pointer absorbs more of the remaining speed as a peg creeps past it.
-    const slowContact = Math.max(0, 1 - Math.abs(speed) / 3);
-    const contactLoss = (7 + 15 * slowContact) * this.pegResistance * settings.impact
-      * contactPressure * speed * pegSpacingFactor;
+    // Keep energy loss consistent so the spring decides whether a slow peg clears the pointer.
+    const contactLoss = 5 * settings.impact * contactPressure * speed * pegSpacingFactor;
     const acceleration = motor + camTorque - bearing - air - contactLoss;
     // Pick the weighted outcome before spinning. Guide the final coast to its sector
     // so the peg forces and spin settings cannot change the selected probabilities.
