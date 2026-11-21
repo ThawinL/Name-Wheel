@@ -8,11 +8,47 @@ export const STEP = 1 / 480;
 const MATTER_STEP = 1 / 60;
 export const WRAP = (angle: number, period = TAU) => ((angle % period) + period) % period;
 export const START_ANGLE = -TAU / 4;
-export const focusedIndex = (angle: number, count: number) => {
-  if (!count) return -1;
-  const width = TAU / count;
-  return Math.floor(WRAP(width / 2 - angle) / width) % count;
-};
+export type SpinDirection = 1 | -1;
+export function wheelSectors(count: number, weights: number[] | null) {
+  const total = weights ? weights.reduce((sum, weight) => sum + weight, 0) : count;
+  const firstWidth = TAU * (weights?.[0] ?? 1) / total;
+  let start = -firstWidth / 2;
+  return Array.from({ length: count }, (_, index) => {
+    const share = (weights?.[index] ?? 1) / total;
+    const end = index === count - 1 ? TAU - firstWidth / 2 : start + share * TAU;
+    const sector = { start, end, center: (start + end) / 2, share };
+    start = end;
+    return sector;
+  });
+}
+
+export type Sector = ReturnType<typeof wheelSectors>[number];
+
+function sectorAt(position: number, sectors: Sector[]) {
+  let low = 0;
+  let high = sectors.length - 1;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (position < sectors[middle].end) high = middle;
+    else low = middle + 1;
+  }
+  return low;
+}
+
+export function focusedIndex(angle: number, sectors: Sector[]) {
+  if (!sectors.length) return -1;
+  const origin = sectors[0].start;
+  return sectorAt(origin + WRAP(-angle - origin), sectors);
+}
+
+function pegPosition(angle: number, sectors: Sector[]) {
+  const origin = sectors[0].start;
+  const turn = Math.floor((-angle - origin) / TAU);
+  const position = origin + WRAP(-angle - origin);
+  const index = sectorAt(position, sectors);
+  const { start, end } = sectors[index];
+  return { position, index, turn, start, end };
+}
 
 export function randomUnit() {
   return crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
@@ -31,6 +67,8 @@ export class WheelPhysics {
   private pegResistance = 1;
   private hitAt = -Infinity;
   private lastPeg = -Infinity;
+  private target: number | null = null;
+  private landing: { from: number; distance: number; duration: number; slope: number; elapsed: number } | null = null;
 
   constructor() {
     Body.setAngle(this.disk, START_ANGLE);
@@ -40,14 +78,16 @@ export class WheelPhysics {
   get angle() { return this.disk.angle; }
   get velocity() { return Body.getAngularVelocity(this.disk) / MATTER_STEP; }
 
-  start(hold: boolean, settings: Settings) {
+  start(hold: boolean, settings: Settings, target: number | null, direction: SpinDirection) {
     this.phase = hold ? 'charging' : 'coasting';
     this.quietTime = 0;
-    this.launchDirection = randomUnit() < 0.5 ? -1 : 1;
+    this.launchDirection = direction;
     this.motionSign = this.launchDirection;
     this.pegResistance = 0.85 + randomUnit() * 0.45;
     this.lastPeg = -Infinity;
     this.hitAt = -Infinity;
+    this.target = target;
+    this.landing = null;
     const launchSpeed = hold ? 0.9 : settings.launch * (0.8 + randomUnit() * 0.32);
     this.setVelocity(this.launchDirection * launchSpeed);
   }
@@ -63,12 +103,14 @@ export class WheelPhysics {
     Body.setAngularVelocity(this.disk, speed * MATTER_STEP);
   }
 
-  step(count: number, radius: number, settings: Settings, onHit: (strength: number) => void) {
+  step(sectors: Sector[], radius: number, settings: Settings, onHit: (strength: number) => void) {
     const angle = this.angle;
     const speed = this.velocity;
-    const spacing = TAU / count;
-    const shifted = angle + spacing / 2;
-    const pegDistance = WRAP(shifted + spacing / 2, spacing) - spacing / 2;
+    const { position, index, start, end } = pegPosition(angle, sectors);
+    const nearStart = position - start < end - position;
+    const neighbor = sectors[(index + (nearStart ? sectors.length - 1 : 1)) % sectors.length];
+    const spacing = Math.min(end - start, neighbor.end - neighbor.start);
+    const pegDistance = (nearStart ? start : end) - position;
     // The peg/pointer overlap forms a cam. Its spring energy creates a torque
     // on both sides of the crest, so a slow wheel can bounce off a peg.
     const clearance = Math.min(spacing * 0.29, (settings.pegSize + 5 * settings.pointerSize / 100) / Math.max(radius - 11, 1));
@@ -101,8 +143,26 @@ export class WheelPhysics {
     const contactLoss = (7 + 15 * slowContact) * this.pegResistance * settings.impact
       * contactPressure * speed * pegSpacingFactor;
     const acceleration = motor + camTorque - bearing - air - contactLoss;
-    this.disk.torque = this.disk.inertia * acceleration / 1e6;
-    Engine.update(this.engine, STEP * 1000);
+    // Pick the weighted outcome before spinning. Guide the final coast to its sector
+    // so the peg forces and spin settings cannot change the selected probabilities.
+    if (this.target !== null && this.phase === 'coasting' && !this.landing && Math.abs(speed) < 4) {
+      const distance = WRAP((this.target - angle) * this.launchDirection);
+      const duration = Math.max(0.24, Math.min(2.8, 2.5 * distance / Math.max(1, Math.abs(speed))));
+      const slope = Math.min(3, Math.abs(speed) * duration / Math.max(distance, 1e-9));
+      this.landing = { from: angle, distance: distance * this.launchDirection, duration, slope, elapsed: 0 };
+    }
+    const landing = this.landing;
+    if (landing) {
+      landing.elapsed += STEP;
+      const t = Math.min(1, landing.elapsed / landing.duration);
+      const progress = t * (t * (3 - 2 * t) + landing.slope * (1 - t) ** 2);
+      const next = landing.from + landing.distance * progress;
+      Body.setAngle(this.disk, next);
+      this.setVelocity(t === 1 ? 0 : (next - angle) / STEP);
+    } else {
+      this.disk.torque = this.disk.inertia * acceleration / 1e6;
+      Engine.update(this.engine, STEP * 1000);
+    }
 
     const change = this.angle - angle;
     this.seconds += STEP;
@@ -110,10 +170,13 @@ export class WheelPhysics {
       const direction = Math.sign(change);
       this.motionSign = direction;
       // Sweep the whole step so fast-moving pegs cannot tunnel through the tip.
-      const start = (shifted + direction * clearance) / spacing;
-      const end = start + change / spacing;
-      let peg = direction > 0 ? Math.floor(start) + 1 : Math.ceil(start) - 1;
-      while (direction * (end - peg) >= 0) {
+      const count = sectors.length;
+      const sweepStart = pegPosition(angle + direction * clearance, sectors);
+      const sweepEnd = -this.angle - direction * clearance;
+      let peg = sweepStart.turn * count + sweepStart.index + (direction < 0 ? 1 : 0);
+      for (;;) {
+        const boundary = sectors[WRAP(peg, count)].start + Math.floor(peg / count) * TAU;
+        if (direction * (boundary - sweepEnd) < 0) break;
         if (peg !== this.lastPeg || this.seconds - this.hitAt > 0.085) {
           const strength = Math.min(1, 0.18 + Math.abs(speed) / 36);
           this.flexSpeed = direction * (6 + strength * 20) * settings.impact;
@@ -121,7 +184,7 @@ export class WheelPhysics {
           this.hitAt = this.seconds;
           onHit(strength);
         }
-        peg += direction;
+        peg -= direction;
       }
     }
 
@@ -130,7 +193,7 @@ export class WheelPhysics {
     this.flexSpeed += ((deflection - this.flex) * springRate ** 2 - settings.damping * this.flexSpeed) * STEP;
     this.flex += this.flexSpeed * STEP;
 
-    if (this.phase === 'coasting' && !inside && Math.abs(this.velocity) < 0.035) {
+    if (this.phase === 'coasting' && (landing ? landing.elapsed >= landing.duration : !inside && Math.abs(this.velocity) < 0.035)) {
       this.setVelocity(0);
       this.quietTime += STEP;
       if (this.quietTime > 0.24 && Math.abs(this.flex) < 0.012 && Math.abs(this.flexSpeed) < 0.75) {

@@ -38,8 +38,25 @@ h1, h2, p { margin: 0; }
 
 .workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 350px); align-items: start; gap: 22px; }
 .stage { min-width: 0; display: grid; grid-template-rows: auto auto; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
-.wheel-space { min-width: 0; height: clamp(340px, calc(100svh - 315px), 610px); }
+.wheel-space { position: relative; min-width: 0; height: clamp(340px, calc(100svh - 315px), 610px); }
 .wheel-canvas { display: block; width: 100%; height: 100%; }
+.direction-button {
+  position: absolute;
+  left: max(30px, var(--direction-x, 30px));
+  top: max(30px, var(--direction-y, 30px));
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--blue);
+  box-shadow: 0 3px 12px #15243c21;
+}
+.direction-button:hover:not(:disabled) { background: #f4f8ff; border-color: #a9c3ff; }
+.direction-button:disabled { opacity: 0.75; }
 .focus-panel { display: flex; align-items: center; gap: 13px; min-height: 83px; padding: 12px 21px; border-top: 1px solid var(--line); background: #f7f9fc; }
 .focus-panel.winner { background: #fff8d7; border-color: #f4e6a6; }
 .focus-icon { width: 41px; height: 41px; flex: 0 0 auto; display: grid; place-items: center; background: #e9f0ff; color: #215ad4; border-radius: 9px; }
@@ -57,11 +74,12 @@ h1, h2, p { margin: 0; }
 .card-icon { width: 31px; height: 31px; display: grid; place-items: center; background: #e7ecf4; border-radius: 7px; color: #425675; }
 .card h2 { font-size: 1.12rem; font-weight: 780; }
 .count { color: #3d5573; background: #e7edf6; border-radius: 5px; padding: 4px 9px; font-size: 0.84rem; font-weight: 740; white-space: nowrap; }
-.card-description { margin-top: 8px; margin-bottom: 12px; color: var(--muted); font-size: 0.9rem; }
+.editor-caption { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-block: 8px 7px; color: var(--muted); font-size: 0.85rem; }
+.editor-caption > span { padding-inline-end: 12px; font-size: 0.76rem; font-weight: 680; }
 .editor {
   --editor-row-height: 28px;
   --editor-padding-block: 10px;
-  --editor-chance-width: 4.75rem;
+  --editor-chance-width: 4.1rem;
   position: relative;
   border: 1px solid #dce4ed;
   border-radius: 9px;
@@ -70,13 +88,33 @@ h1, h2, p { margin: 0; }
   overflow: hidden;
 }
 .editor:focus-within { border-color: #246bfd; outline: 2px solid #c8dbff; }
-.editor textarea { display: block; width: 100%; height: 248px; min-height: 140px; resize: vertical; border: 0; background: transparent; color: var(--ink); font-size: 0.99rem; font-weight: 590; padding: var(--editor-padding-block) 10px var(--editor-padding-block) 38px; line-height: var(--editor-row-height); white-space: pre; outline: none; }
+.editor textarea { display: block; width: 100%; height: 248px; min-height: 140px; resize: vertical; border: 0; background: transparent; color: var(--ink); font-size: 0.99rem; font-weight: 590; padding: var(--editor-padding-block) 9px var(--editor-padding-block) 29px; line-height: var(--editor-row-height); white-space: pre; outline: none; }
 .editor-details { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.editor-details::before { content: ""; position: absolute; inset: 0 0 0 auto; width: var(--editor-chance-width); border-inline-start: 1px solid #e8edf4; background: #f7f9fc; }
+.editor-details::before { content: ""; position: absolute; inset: 0 0 0 auto; width: var(--editor-chance-width); box-sizing: border-box; border-inline-start: 1px solid #edf1f6; background: #fafbfd; }
 .editor-detail-lines { position: relative; padding-block: var(--editor-padding-block); }
-.editor-detail-line { height: var(--editor-row-height); display: grid; grid-template-columns: 32px var(--editor-chance-width); justify-content: space-between; align-items: center; }
+.editor-detail-line { height: var(--editor-row-height); display: grid; grid-template-columns: 27px var(--editor-chance-width); justify-content: space-between; align-items: center; }
 .editor-detail-line i { width: 9px; height: 9px; border-radius: 50%; justify-self: center; }
-.editor-detail-line span { padding-inline: 8px 11px; color: #465b76; text-align: end; white-space: nowrap; font-size: 0.8rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.chance-value { justify-self: end; margin-inline-end: 6px; padding: 1px 5px; border-radius: 5px; color: #465b76; text-align: end; white-space: nowrap; font-size: 0.79rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.is-revealing .chance-value { animation: reveal-chance 260ms cubic-bezier(.2,.75,.25,1) both; }
+@keyframes reveal-chance {
+  from { opacity: 0; transform: translateY(5px) scale(.9); }
+  45% { opacity: 1; background: #dce8ff; color: #1749a8; transform: scale(1.08); }
+  to { opacity: 1; transform: none; }
+}
+.chance-controls { display: grid; gap: 7px; margin-top: 13px; }
+.chance-heading { display: flex; justify-content: space-between; align-items: center; gap: 6px; min-height: 22px; font-size: .81rem; font-weight: 700; color: var(--muted); }
+.chance-reset { border: 0; border-radius: 4px; padding: 2px 0; background: transparent; font-size: .76rem; font-weight: 700; color: #215ad4; }
+.chance-reset:hover:not(:disabled) { text-decoration: underline; }
+.chance-spread { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 3px; border-radius: 9px; background: #e5eaf1; }
+.chance-spread button { min-height: 30px; padding: 2px 4px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #4c5d76; font-size: .83rem; font-weight: 680; }
+.chance-spread button[aria-pressed="true"] { border-color: #cedcf2; background: #fff; color: #1749a8; }
+.chance-spread button:hover:not(:disabled) { color: #1749a8; }
+.chance-shuffle { min-height: 40px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 5px 9px; border: 1px solid #cadbfa; border-radius: 8px; background: #edf4ff; color: #1749a8; font-size: .9rem; font-weight: 770; }
+.chance-shuffle:hover:not(:disabled) { background: #e0ecff; border-color: #a8c4fa; }
+.chance-controls button:disabled { opacity: .65; }
+@media (prefers-reduced-motion: reduce) {
+  .is-revealing .chance-value { animation: none; }
+}
 
 .mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: #e5eaf1; padding: 4px; border-radius: 9px; margin: 12px 0; }
 .mode-switch button { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 37px; padding: 4px 5px; background: transparent; border: 1px solid transparent; color: #4c5d76; border-radius: 6px; font-size: 0.88rem; font-weight: 660; white-space: nowrap; }

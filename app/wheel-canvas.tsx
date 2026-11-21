@@ -2,7 +2,7 @@
 
 import { useLayoutEffect, useRef } from 'react';
 import type { Settings } from './config';
-import { START_ANGLE, TAU, type WheelPhysics } from './physics';
+import { START_ANGLE, TAU, type Sector, type WheelPhysics } from './physics';
 
 const INK = '#15243C';
 const segmenter = new Intl.Segmenter('th', { granularity: 'grapheme' });
@@ -36,12 +36,14 @@ function fitLabel(context: CanvasRenderingContext2D, label: string, width: numbe
   return groups.slice(0, first).join('').trimEnd() + '…';
 }
 
-export function WheelCanvas({ names, settings, physics, redraw, radiusRef }: {
+export function WheelCanvas({ names, sectors, settings, physics, redraw, radiusRef, directionButton }: {
   names: string[];
+  sectors: Sector[];
   settings: Settings;
   physics: React.RefObject<WheelPhysics | null>;
   redraw: React.RefObject<() => void>;
   radiusRef: React.RefObject<number>;
+  directionButton: React.RefObject<HTMLButtonElement | null>;
 }) {
   const element = useRef<HTMLCanvasElement>(null);
   const layer = useRef<HTMLCanvasElement | null>(null);
@@ -57,7 +59,7 @@ export function WheelCanvas({ names, settings, physics, redraw, radiusRef }: {
     let centerY = 0;
     let radius = 0;
     let labels: string[] = [];
-    let labelRadius = 0;
+    let labelRadii: number[] = [];
     let scale = 1;
     let disposed = false;
     const radialLabels = settings.labelOrientation === 'radial';
@@ -79,9 +81,9 @@ export function WheelCanvas({ names, settings, physics, redraw, radiusRef }: {
       context.fillStyle = INK;
       labels.forEach((label, index) => {
         if (!label) return;
-        const angle = rotation + index * TAU / labels.length;
-        const x = center + labelRadius * Math.cos(angle);
-        const y = centerY + labelRadius * Math.sin(angle);
+        const angle = rotation + sectors[index].center;
+        const x = center + labelRadii[index] * Math.cos(angle);
+        const y = centerY + labelRadii[index] * Math.sin(angle);
         if (radialLabels) {
           context.save();
           context.translate(x, y);
@@ -140,7 +142,10 @@ export function WheelCanvas({ names, settings, physics, redraw, radiusRef }: {
       centerY = height / 2;
       radius = size / 2 - 2;
       radiusRef.current = radius;
+      directionButton.current?.style.setProperty('--direction-x', `${center - (radius + 27) * Math.SQRT1_2}px`);
+      directionButton.current?.style.setProperty('--direction-y', `${centerY - (radius + 27) * Math.SQRT1_2}px`);
       labels = [];
+      labelRadii = [];
 
       canvas.width = Math.round(width * scale);
       canvas.height = Math.round(height * scale);
@@ -156,49 +161,46 @@ export function WheelCanvas({ names, settings, physics, redraw, radiusRef }: {
       disk.fill();
 
       if (names.length) {
-        const sector = TAU / names.length;
         const pegRing = radius - 11;
         const outer = radius - Math.max(5, radius * 0.048);
-        labelRadius = radius * 0.63;
-        const pegSize = Math.min(settings.pegSize, 0.34 * sector * pegRing);
         disk.font = `700 ${settings.fontSize}px "DM Sans Variable", "Noto Sans Thai Variable", sans-serif`;
-        const halfSector = Math.min(sector / 2, Math.PI / 2);
         const halfHeight = settings.fontSize * 0.7;
         const padding = 5;
-        let labelWidth = 0;
-        if (radialLabels) {
-          // Fit the label rectangle between the sector edges and the outer rim.
-          const inner = Math.max(radius * 0.2, (halfHeight * Math.cos(halfSector) + padding) / Math.sin(halfSector));
-          const outerEdge = Math.sqrt(Math.max(0, (outer - padding) ** 2 - halfHeight ** 2));
-          labelRadius = (inner + outerEdge) / 2;
-          labelWidth = Math.max(0, outerEdge - inner);
-        } else {
-          // Fit a horizontal label inside the sector through a full revolution.
-          const sectorClearance = labelRadius * Math.sin(halfSector);
-          const clearance = Math.min(sectorClearance, outer - labelRadius) - padding;
-          labelWidth = clearance > halfHeight ? 2 * Math.sqrt(clearance ** 2 - halfHeight ** 2) : 0;
-        }
 
-        const drawSector = (index: number, edge: number, color: string) => {
-          const angle = index * sector - sector / 2;
-          const overlap = Math.min(sector * 0.025, 0.6 / edge);
+        const drawSector = ({ start, end }: Sector, edge: number, color: string) => {
+          const overlap = Math.min((end - start) * 0.025, 0.6 / edge);
           disk.beginPath();
           if (names.length > 1) disk.moveTo(0, 0);
-          disk.arc(0, 0, edge, angle, angle + sector + overlap);
+          disk.arc(0, 0, edge, start, end + overlap);
           disk.closePath();
           disk.fillStyle = color;
           disk.fill();
         };
-        names.forEach((_, index) => {
-          drawSector(index, radius, rimColor(settings.colors[index % settings.colors.length]));
+        sectors.forEach((sector, index) => {
+          drawSector(sector, radius, rimColor(settings.colors[index % settings.colors.length]));
         });
-        names.forEach((name, index) => {
-          labels.push(fitLabel(disk, name, labelWidth));
-          drawSector(index, outer, settings.colors[index % settings.colors.length]);
+        sectors.forEach((sector, index) => {
+          const halfSector = Math.min((sector.end - sector.start) / 2, Math.PI / 2);
+          let labelRadius = radius * 0.63;
+          let labelWidth = 0;
+          if (radialLabels) {
+            const inner = Math.max(radius * 0.2, (halfHeight * Math.cos(halfSector) + padding) / Math.sin(halfSector));
+            const outerEdge = Math.sqrt(Math.max(0, (outer - padding) ** 2 - halfHeight ** 2));
+            labelRadius = (inner + outerEdge) / 2;
+            labelWidth = Math.max(0, outerEdge - inner);
+          } else {
+            const clearance = Math.min(labelRadius * Math.sin(halfSector), outer - labelRadius) - padding;
+            labelWidth = clearance > halfHeight ? 2 * Math.sqrt(clearance ** 2 - halfHeight ** 2) : 0;
+          }
+          labels.push(fitLabel(disk, names[index], labelWidth));
+          labelRadii.push(labelRadius);
+          drawSector(sector, outer, settings.colors[index % settings.colors.length]);
         });
 
-        for (let index = 0; index < names.length; index++) {
-          const boundary = (index - 0.5) * sector;
+        for (let index = 0; index < sectors.length; index++) {
+          const { start: boundary, end } = sectors[index];
+          const previous = sectors[(index + sectors.length - 1) % sectors.length];
+          const pegSize = Math.min(settings.pegSize, 0.34 * Math.min(end - boundary, previous.end - previous.start) * pegRing);
           disk.beginPath();
           disk.arc(pegRing * Math.cos(boundary), pegRing * Math.sin(boundary), pegSize, 0, TAU);
           disk.fillStyle = INK;
@@ -226,7 +228,7 @@ export function WheelCanvas({ names, settings, physics, redraw, radiusRef }: {
       window.removeEventListener('resize', build);
       if (redraw.current === paint) redraw.current = () => {};
     };
-  }, [names, settings, physics, redraw, radiusRef]);
+  }, [names, sectors, settings, physics, redraw, radiusRef, directionButton]);
 
   return <canvas ref={element} className="wheel-canvas" role="img" aria-label={`วงล้อสุ่มชื่อ ${names.length} ช่อง เข็มชี้อยู่ด้านขวา`}/>;
 }
