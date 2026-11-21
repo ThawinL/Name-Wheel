@@ -42,6 +42,7 @@ export function SettingsPanel({ values, onChange, onClose, locked }: {
               <span>{label}<output>{values[key]}{unit}</output></span>
               <input type="range" min={min} max={max} step={step} value={values[key]}
                 onChange={(event) => onChange({ ...values, [key]: event.target.valueAsNumber })}/>
+              {key === 'pivotTightness' && <small className="pivot-range"><span>หลวม</span><span>แน่น</span></small>}
             </label>
           )}
         </div>

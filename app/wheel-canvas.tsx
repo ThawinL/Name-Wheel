@@ -3,6 +3,10 @@
 import { useLayoutEffect, useRef } from 'react';
 import type { Settings } from './config';
 import { START_ANGLE, TAU, type Sector, type WheelPhysics } from './physics';
+import {
+  PEG_STROKE, PEG_STROKE_THRESHOLD, POINTER_OFFSET, POINTER_STROKE,
+  pointerContact, pointerTriangle, wheelPegs, type Peg,
+} from './pointer-contact';
 
 const INK = '#15243C';
 const segmenter = new Intl.Segmenter('th', { granularity: 'grapheme' });
@@ -64,6 +68,9 @@ export function WheelCanvas({ names, sectors, settings, physics, redraw, radiusR
     let disposed = false;
     const radialLabels = settings.labelOrientation === 'radial';
     const pointerScale = settings.pointerSize / 100;
+    const triangle = pointerTriangle(pointerScale, settings.pegSize);
+    let pegs: Peg[] = [];
+    let contactSwing = 0;
 
     const paint = () => {
       if (!size) return;
@@ -106,25 +113,28 @@ export function WheelCanvas({ names, sectors, settings, physics, redraw, radiusR
       circle(center, centerY, radius * 0.029, '#D0D9E7');
 
       context.save();
-      context.translate(center + radius + 10, centerY);
-      context.scale(pointerScale, pointerScale);
-      const flex = Math.max(-0.68, Math.min(0.68, physics.current?.flex ?? 0));
-      const length = 23 + (13 + settings.pegSize) / pointerScale;
-      const tipX = -length + Math.abs(flex) * 12;
-      const tipY = length * Math.sin(flex);
+      const pivot = radius + POINTER_OFFSET;
+      const springAngle = physics.current?.pointerAngle ?? 0;
+      const swing = physics.current?.pointerContactSwing || contactSwing || -Math.sign(physics.current?.velocity ?? 0) || Math.sign(springAngle) || 1;
+      const contact = pointerContact(rotation, pivot, pegs, triangle, springAngle, swing);
+      contactSwing = contact.touching ? swing : 0;
+      context.translate(center + pivot, centerY);
+      context.save();
+      context.rotate(contact.angle);
       context.beginPath();
-      context.moveTo(2, -12);
-      context.quadraticCurveTo(-14, -10, tipX, tipY);
-      context.quadraticCurveTo(-17, tipY * 0.5 + 15, 2, 12);
+      context.moveTo(triangle[0].x, triangle[0].y);
+      context.lineTo(triangle[1].x, triangle[1].y);
+      context.lineTo(triangle[2].x, triangle[2].y);
       context.closePath();
       context.lineJoin = 'round';
-      context.lineWidth = 4 / pointerScale;
+      context.lineWidth = POINTER_STROKE;
       context.strokeStyle = '#FFFFFF';
       context.stroke();
       context.fillStyle = settings.pointerColor;
       context.fill();
-      circle(1, 0, 10, INK);
-      circle(1, 0, 3.1, '#FFFFFF');
+      context.restore();
+      circle(0, 0, 10 * pointerScale, INK);
+      circle(0, 0, 3.1 * pointerScale, '#FFFFFF');
       context.restore();
     };
 
@@ -136,7 +146,7 @@ export function WheelCanvas({ names, sectors, settings, physics, redraw, radiusR
       const width = bounds.width;
       const height = bounds.height;
       margin = width < 450 ? 28 : 42;
-      const available = Math.min(width - margin - 10, height - 8);
+      const available = Math.min(width - margin - 18, height - 8);
       size = Math.max(100, Math.min(available, 590) * settings.wheelSize / 100);
       center = width / 2 - margin / 3;
       centerY = height / 2;
@@ -144,6 +154,7 @@ export function WheelCanvas({ names, sectors, settings, physics, redraw, radiusR
       radiusRef.current = radius;
       directionButton.current?.style.setProperty('--direction-x', `${center - (radius + 27) * Math.SQRT1_2}px`);
       directionButton.current?.style.setProperty('--direction-y', `${centerY - (radius + 27) * Math.SQRT1_2}px`);
+      pegs = wheelPegs(sectors, radius, settings.pegSize);
       labels = [];
       labelRadii = [];
 
@@ -161,7 +172,6 @@ export function WheelCanvas({ names, sectors, settings, physics, redraw, radiusR
       disk.fill();
 
       if (names.length) {
-        const pegRing = radius - 11;
         const outer = radius - Math.max(5, radius * 0.048);
         disk.font = `700 ${settings.fontSize}px "DM Sans Variable", "Noto Sans Thai Variable", sans-serif`;
         const halfHeight = settings.fontSize * 0.7;
@@ -197,16 +207,14 @@ export function WheelCanvas({ names, sectors, settings, physics, redraw, radiusR
           drawSector(sector, outer, settings.colors[index % settings.colors.length]);
         });
 
-        for (let index = 0; index < sectors.length; index++) {
-          const { start: boundary, end } = sectors[index];
-          const previous = sectors[(index + sectors.length - 1) % sectors.length];
-          const pegSize = Math.min(settings.pegSize, 0.34 * Math.min(end - boundary, previous.end - previous.start) * pegRing);
+        for (const { x, y, radius: pegSize } of pegs) {
+          const outlined = pegSize >= PEG_STROKE_THRESHOLD;
           disk.beginPath();
-          disk.arc(pegRing * Math.cos(boundary), pegRing * Math.sin(boundary), pegSize, 0, TAU);
+          disk.arc(x, y, pegSize, 0, TAU);
           disk.fillStyle = INK;
           disk.fill();
-          if (pegSize >= 2.8) {
-            disk.lineWidth = 1.2;
+          if (outlined) {
+            disk.lineWidth = PEG_STROKE;
             disk.strokeStyle = '#FFFFFF';
             disk.stroke();
           }

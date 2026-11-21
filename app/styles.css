@@ -179,3 +179,6 @@ kbd { font-family: inherit; font-size: 0.79rem; font-weight: 700; border: 1px so
   .keyboard-hint { display: none; }
   .settings-popover { top: 52px; }
 }
+
+.slider .pivot-range { display: flex; justify-content: space-between; color: var(--muted); }
+.slider .pivot-range span { font-size: inherit; font-weight: 400; }

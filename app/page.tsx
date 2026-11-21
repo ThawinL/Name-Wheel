@@ -35,6 +35,16 @@ function restore(): Partial<Saved> {
       const value = saved.settings?.[key];
       if (typeof value === 'number' && Number.isFinite(value)) settings[key] = Math.max(min, Math.min(max, value));
     }
+    if ((saved.physicsVersion ?? 1) < 2) {
+      // Upgrade the old presets while keeping individually tuned controls.
+      if (settings.friction === 0.45) settings.friction = defaults.friction;
+      if (settings.drag === 0.1) settings.drag = defaults.drag;
+    }
+    const legacyStiffness = saved.settings?.stiffness;
+    if (saved.settings?.pivotTightness === undefined && typeof legacyStiffness === 'number' &&
+      Number.isFinite(legacyStiffness) && !(saved.physicsVersion === undefined && legacyStiffness === 14)) {
+      settings.pivotTightness = Math.max(0, Math.min(100, Math.round((legacyStiffness - 3) * 100 / 15 / 5) * 5));
+    }
     const validColor = (value: unknown): value is string => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
     if (Array.isArray(saved.settings?.colors) && saved.settings.colors.length === 8 && saved.settings.colors.every(validColor)) {
       settings.colors = saved.settings.colors;
@@ -112,7 +122,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!loaded) return;
-    try { localStorage.setItem(STORAGE, JSON.stringify({ text: raw, settings, mode, direction, muted, weights, spread })); } catch {}
+    try { localStorage.setItem(STORAGE, JSON.stringify({ physicsVersion: 3, text: raw, settings, mode, direction, muted, weights, spread })); } catch {}
   }, [raw, settings, mode, direction, muted, weights, spread, loaded]);
 
   useEffect(() => {
